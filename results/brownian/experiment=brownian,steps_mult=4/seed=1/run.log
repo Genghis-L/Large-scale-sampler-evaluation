@@ -1,0 +1,15 @@
+[INFO] - Starting up...
+[INFO] - Unable to initialize backend 'rocm': module 'jaxlib.xla_extension' has no attribute 'GpuAllocatorConfig'
+[INFO] - Unable to initialize backend 'tpu': INTERNAL: Failed to open libtpu.so: libtpu.so: cannot open shared object file: No such file or directory
+[INFO] - Jax devices: [CudaDevice(id=0)]
+[INFO] - Run path: /content/denoising-diffusion-sampler_Genghis/results/brownian/experiment=brownian,steps_mult=4/seed=1
+[INFO] - Hostname: 6f43231d4af1
+[INFO] - Learning VI approximation
+[INFO] - Number of parameters: 43584
+[INFO] - Training
+[INFO] - Plotting at step None
+[INFO] - Evaluating at step None
+[INFO] - Plotting at step 10000
+[INFO] - Evaluating at step 10000
+[INFO] - Plotting at step 20000
+[INFO] - Evaluating at step 20000
