@@ -7,32 +7,7 @@ Classifier: Programming Language :: Python :: 3.9
 Classifier: Operating System :: OS Independent
 Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
 Description-Content-Type: text/markdown
-Requires-Dist: tensorflow
-Requires-Dist: tensorflow-probability
-Requires-Dist: torch
-Requires-Dist: numpyro
-Requires-Dist: inference_gym
-Requires-Dist: diffrax
-Requires-Dist: dm-haiku
-Requires-Dist: optax
-Requires-Dist: equinox
-Requires-Dist: tqdm
-Requires-Dist: matplotlib
-Requires-Dist: seaborn
-Requires-Dist: jaxtyping
-Requires-Dist: chex
-Requires-Dist: check_shapes
-Requires-Dist: fsspec
-Requires-Dist: gpustat
-Requires-Dist: wandb
-Requires-Dist: hydra_core==1.1.1
-Requires-Dist: hydra_colorlog==1.1
-Requires-Dist: hydra-joblib-launcher==1.1.5
-Requires-Dist: submitit
-Requires-Dist: hydra-submitit-launcher
-Requires-Dist: black
-Requires-Dist: ipykernel
-Requires-Dist: ipywidgets
+License-File: LICENSE
 
 # Particle Denoising Diffusion Sampler
 

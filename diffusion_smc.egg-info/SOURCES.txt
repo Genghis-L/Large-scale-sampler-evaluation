@@ -1,3 +1,4 @@
+LICENSE
 README.md
 setup.py
 diffusion_smc.egg-info/PKG-INFO
