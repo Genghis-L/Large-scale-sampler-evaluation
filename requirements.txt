@@ -1,5 +1,5 @@
-# --find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-# jax[cuda11_cudnn86] 
+--find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+jax[cuda12_pip]
 
 tensorflow
 tensorflow-probability
@@ -10,6 +10,7 @@ diffrax
 dm-haiku
 optax
 equinox
+flax
 
 tqdm
 matplotlib
@@ -19,6 +20,7 @@ jaxtyping
 chex
 check_shapes
 fsspec
+jupytext
 
 gpustat
 wandb

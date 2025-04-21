@@ -221,20 +221,20 @@ class ChallengingTwoDimensionalMixture(Distribution):
     From annealed_flow_transport codebase.
     """
 
-    def __init__(self, dim: int = 2, is_target: bool = False):
+    def __init__(self, mean_scale: float, dim: int = 2, is_target: bool = False, beta: float = 1.0):
         super().__init__(dim, is_target)
         self.n_components = 6
         self.mean_a = jnp.array([3.0, 0.0])
         self.mean_b = jnp.array([-2.5, 0.0])
         self.mean_c = jnp.array([2.0, 3.0])
-        self.means = jnp.stack((self.mean_a, self.mean_b, self.mean_c), axis=0)
+        self.means = jnp.stack((self.mean_a, self.mean_b, self.mean_c), axis=0) * mean_scale
         self.cov_a = jnp.array([[0.7, 0.0], [0.0, 0.05]])
         self.cov_b = jnp.array([[0.7, 0.0], [0.0, 0.05]])
         self.cov_c = jnp.array([[1.0, 0.95], [0.95, 1.0]])
         self.covs = jnp.stack((self.cov_a, self.cov_b, self.cov_c), axis=0)
         self.all_means = jnp.array(
             [[3.0, 0.0], [0.0, 3.0], [-2.5, 0.0], [0.0, -2.5], [2.0, 3.0], [3.0, 2.0]]
-        )
+        ) * mean_scale
         self.all_covs = jnp.array(
             [
                 [[0.7, 0.0], [0.0, 0.05]],
@@ -245,6 +245,7 @@ class ChallengingTwoDimensionalMixture(Distribution):
                 [[1.0, 0.95], [0.95, 1.0]],
             ]
         )
+        self.beta = beta
 
     @check_shapes("x: [d]", "return: []")
     def raw_log_density(self, x: Array) -> Array:
@@ -259,7 +260,7 @@ class ChallengingTwoDimensionalMixture(Distribution):
         ).sum(axis=1)
         individual_log_pdfs = mahalanobis_term + normalizing_term
         mixture_weighted_pdfs = individual_log_pdfs + log_weights
-        return logsumexp(mixture_weighted_pdfs)
+        return logsumexp(mixture_weighted_pdfs) * self.beta
 
     @check_shapes("x: [d]", "return: []")
     def make_2d_invariant(self, log_density, x: Array) -> Array:
@@ -278,6 +279,7 @@ class ChallengingTwoDimensionalMixture(Distribution):
 
     @check_shapes("return: [b, d]")
     def sample(self, key: Key, num_samples: int) -> Array:
+        assert self.beta == 1.0, "Sampling only implemented for unannealed version."
         batched_sample_shape = (num_samples,) + (self.dim,)
         subkey1, subkey2 = jax.random.split(key)
         components = jax.random.choice(
