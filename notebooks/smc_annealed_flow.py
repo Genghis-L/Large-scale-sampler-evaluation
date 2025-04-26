@@ -134,35 +134,53 @@ class AnnealedFlowSMC:
         log_weights_just_before_resampling = jax.nn.log_softmax(log_weights + lw_incr)
         log_normaliser_increment = jnp.sum(jax.nn.softmax(log_weights) * lw_incr)
         
-        # Resample if needed
-        if self.use_resampling:
-            rng, rng_ = jax.random.split(rng)
+        # Resample if needed - Use JAX conditionals instead of Python if/else
+        def do_resampling(args):
+            rng, samples, log_weights = args
             resample_result = optionally_resample(
-                rng=rng_,
-                log_weights=log_weights_just_before_resampling,
-                samples=samples_just_before_resampling,
+                rng=rng,
+                log_weights=log_weights,
+                samples=samples,
                 ess_threshold=self.ess_threshold
             )
-            resampled_samples = resample_result["samples"]
-            log_weights_resampled = resample_result["lw"]
-            resampled = resample_result["resampled"]
-        else:
-            resampled_samples = samples_just_before_resampling
-            log_weights_resampled = log_weights_just_before_resampling
-            resampled = False
-            
-        # Apply MCMC steps if configured
-        if self.num_mcmc_steps > 0 and resampled:
-            rng, rng_ = jax.random.split(rng)
+            return (resample_result["samples"], 
+                    resample_result["lw"], 
+                    resample_result["resampled"])
+        
+        def skip_resampling(args):
+            _, samples, log_weights = args
+            return (samples, log_weights, False)
+        
+        rng, rng_ = jax.random.split(rng)
+        resampled_samples, log_weights_resampled, resampled = jax.lax.cond(
+            self.use_resampling,
+            do_resampling,
+            skip_resampling,
+            (rng_, samples_just_before_resampling, log_weights_just_before_resampling)
+        )
+        
+        # Apply MCMC steps if configured - Use JAX conditionals
+        def apply_mcmc(args):
+            rng, samples, density_state = args
             MCMC_kernel = self.smc_problem.get_MCMC_kernel(t_new, self.mcmc_step_size)
-            keys = jax.random.split(rng_, self.num_mcmc_steps)
+            keys = jax.random.split(rng, self.num_mcmc_steps)
             (samples_new, density_state), acceptance_rates = jax.lax.scan(
-                MCMC_kernel, (resampled_samples, density_state), keys
+                MCMC_kernel, (samples, density_state), keys
             )
             acceptance_ratio = jnp.mean(acceptance_rates)
-        else:
-            samples_new = resampled_samples
-            acceptance_ratio = 1.0
+            return samples_new, acceptance_ratio, density_state
+        
+        def skip_mcmc(args):
+            _, samples, density_state = args
+            return samples, jnp.array(1.0), density_state
+        
+        rng, rng_ = jax.random.split(rng)
+        samples_new, acceptance_ratio, density_state = jax.lax.cond(
+            (self.num_mcmc_steps > 0) & resampled,
+            apply_mcmc,
+            skip_mcmc,
+            (rng_, resampled_samples, density_state)
+        )
             
         return {
             "samples_new": samples_new,
@@ -197,12 +215,23 @@ class AnnealedFlowSMC:
         logZ = jnp.sum(jax.nn.softmax(lw_unnorm) * lw_unnorm)
         initial_ess = essl(lw)
         
-        # Optional initial resampling
-        if self.use_resampling:
-            rng, rng_ = jax.random.split(rng)
-            initial_resample = optionally_resample(rng_, lw, x, self.ess_threshold)
-            x = initial_resample["samples"]
-            lw = initial_resample["lw"]
+        # Optional initial resampling - Use JAX conditional for resampling
+        def do_initial_resampling(args):
+            rng, x, lw = args
+            initial_resample = optionally_resample(rng, lw, x, self.ess_threshold)
+            return initial_resample["samples"], initial_resample["lw"]
+        
+        def skip_initial_resampling(args):
+            _, x, lw = args
+            return x, lw
+        
+        rng, rng_ = jax.random.split(rng)
+        x, lw = jax.lax.cond(
+            self.use_resampling,
+            do_initial_resampling,
+            skip_initial_resampling,
+            (rng_, x, lw)
+        )
             
         # Setup logging arrays
         ess_log = np.zeros(self.num_steps + 1)
