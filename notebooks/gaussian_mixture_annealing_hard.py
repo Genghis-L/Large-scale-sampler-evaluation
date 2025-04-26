@@ -93,7 +93,6 @@ key_iter = _get_key_iter(key)
 target_distribution = ChallengingTwoDimensionalMixture(mean_scale=mean_scale, dim=dim, is_target=True)
 target_distribution_intermediate = ChallengingTwoDimensionalMixture(mean_scale=mean_scale, dim=dim, is_target=True, beta=beta_start)
 
-
 # Instantiate SDE
 scheduler = LinearScheduler(t_0=t_0, t_f=t_f, beta_0=0.001, beta_f=12.0)
 sde = SDE(scheduler, sigma=sigma, dim=dim)

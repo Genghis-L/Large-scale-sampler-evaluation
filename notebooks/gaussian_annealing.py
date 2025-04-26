@@ -19,6 +19,7 @@
 
 # +
 import os
+
 # Set id of available GPU
 # os.environ['CUDA_VISIBLE_DEVICES'] = '4'
 
@@ -55,7 +56,11 @@ from pdds.ml_tools.state import TrainingState
 from pdds.smc_loops import fast_outer_loop_smc
 from pdds.distributions import NormalDistributionWrapper
 from pdds.sde import LinearScheduler, SDE
-from pdds.potentials import RatioPotential, NaivelyApproximatedPotential, NNApproximatedPotential
+from pdds.potentials import (
+    RatioPotential,
+    NaivelyApproximatedPotential,
+    NNApproximatedPotential,
+)
 from pdds.nn_models.mlp import PISGRADNet
 from pdds.resampling import resampler
 
@@ -66,12 +71,12 @@ from pdds.resampling import resampler
 
 # +
 # global variables
-dim=2
-sigma=1.0
-t_0=0.0
-t_f=1.0
-num_steps=16
-num_particles=2000
+dim = 2
+sigma = 1.0
+t_0 = 0.0
+t_f = 1.0
+num_steps = 16
+num_particles = 2000
 beta = 0.75
 
 # INSTANTIATE OBJECTS
@@ -81,17 +86,24 @@ key = jax.random.PRNGKey(seed=0)
 key_iter = _get_key_iter(key)
 
 # Instantiate target
-target_distribution = NormalDistributionWrapper(mean=2.75, scale=0.25, dim=dim, is_target=True)
-target_distribution_intermediate = NormalDistributionWrapper(mean=2.75, scale=0.25/beta, dim=dim, is_target=True)
-
+target_distribution = NormalDistributionWrapper(
+    mean=2.75, scale=0.25, dim=dim, is_target=True
+)
+target_distribution_intermediate = NormalDistributionWrapper(
+    mean=2.75, scale=0.25 / beta, dim=dim, is_target=True
+)
 
 # Instantiate SDE
 scheduler = LinearScheduler(t_0=t_0, t_f=t_f, beta_0=0.001, beta_f=12.0)
 sde = SDE(scheduler, sigma=sigma, dim=dim)
 
 # Instantiate potential classes
-log_g0_intermediate = RatioPotential(sigma=sigma, target=target_distribution_intermediate)
-uncorrected_approx_potential_intermediate = NaivelyApproximatedPotential(base_potential=log_g0_intermediate, dim=dim, nn_potential_approximator=None)
+log_g0_intermediate = RatioPotential(
+    sigma=sigma, target=target_distribution_intermediate
+)
+uncorrected_approx_potential_intermediate = NaivelyApproximatedPotential(
+    base_potential=log_g0_intermediate, dim=dim, nn_potential_approximator=None
+)
 
 # MCMC step size scheduler, not used in this example so just initialised to identity function for ease
 mcmc_step_size_scheduler = lambda x: x
@@ -119,7 +131,7 @@ for i in tqdm.trange(100, disable=True):
     smc_result, _ = eval_sampler(subkey)
     log_Z[i] = smc_result["log_normalising_constant"]
 
-print('Naive log Z estimate: ', np.mean(log_Z))
+print("Naive log Z estimate: ", np.mean(log_Z))
 
 # Visualise target, reference and samples
 n_plot_samples = int(num_particles)
@@ -146,7 +158,8 @@ plt.close(fig)
 
 # +
 # Global variables
-batch_size=300
+batch_size = 300
+
 
 # Instantiate neural network potential approximator
 @hk.without_apply_rng
@@ -159,7 +172,7 @@ def nn_potential_approximator_intermediate(lbd: Array, x: Array, density_state: 
         lbd=lbd, x=x, density_state=density_state
     )
 
-    net = PISGRADNet(hidden_shapes=[64,64], act='gelu', dim=dim)
+    net = PISGRADNet(hidden_shapes=[64, 64], act="gelu", dim=dim)
 
     out = net(lbd, x, residual)
 
@@ -168,28 +181,27 @@ def nn_potential_approximator_intermediate(lbd: Array, x: Array, density_state: 
 
     return out, density_state
 
+
 # Instantiate approximate density and potential functions
 @jax.jit
 @check_shapes("lbd: [b]", "x: [b, d]", "return[0]: [b]")
-def log_pi(
-    params, lbd: Array, x: Array, density_state: int
-) -> tp.Tuple[Array, int]:
-    reference_term, _ = sde.reference_dist.evaluate_log_density(
-        x=x, density_state=0
-    )
+def log_pi(params, lbd: Array, x: Array, density_state: int) -> tp.Tuple[Array, int]:
+    reference_term, _ = sde.reference_dist.evaluate_log_density(x=x, density_state=0)
     nn_approx, density_state = nn_potential_approximator_intermediate.apply(
         params, lbd, x, density_state
     )
     return nn_approx + reference_term, density_state
 
+
 grad_log_pi = jax.jit(x_gradient_stateful_parametrised(log_pi))
+
 
 @jax.jit
 @check_shapes("lbd: [b]", "x: [b, d]")
 def grad_log_g(params, lbd: Array, x: Array, density_state: int):
-    return x_gradient_stateful_parametrised(nn_potential_approximator_intermediate.apply)(
-        params, lbd, x, density_state
-    )
+    return x_gradient_stateful_parametrised(
+        nn_potential_approximator_intermediate.apply
+    )(params, lbd, x, density_state)
 
 
 # Define loss function
@@ -202,8 +214,10 @@ def guidance_loss_fn(params, samples: Array, key: Key, density_state: int):
         samples,
         density_state,
         log_g0_intermediate,
-        False
+        False,
     )
+
+
 @check_shapes("samples: [b, d]")
 def dsm_loss_fn(params, samples: Array, key: Key, density_state: int):
     return dsm_loss(
@@ -213,14 +227,17 @@ def dsm_loss_fn(params, samples: Array, key: Key, density_state: int):
         samples,
         density_state,
         log_g0_intermediate,
-        False
+        False,
     )
+
 
 # dsm_loss_fn or guidance_loss_fn
 loss_fn = guidance_loss_fn
 
 # Instantiate learning rate schedulers
-learning_rate_schedule_unlooped = optax.exponential_decay(init_value=1e-3, transition_steps=50, decay_rate=0.95)
+learning_rate_schedule_unlooped = optax.exponential_decay(
+    init_value=1e-3, transition_steps=50, decay_rate=0.95
+)
 learning_rate_schedule = loop_schedule(
     schedule=learning_rate_schedule_unlooped, freq=10000
 )
@@ -230,6 +247,7 @@ optimizer = optax.chain(
     optax.scale_by_schedule(learning_rate_schedule),
     optax.scale(-1.0),
 )
+
 
 # define model update function
 @jax.jit
@@ -245,8 +263,7 @@ def update_step(
     updates, new_opt_state = optimizer.update(grads, state.opt_state)
     new_params = optax.apply_updates(state.params, updates)
     new_params_ema = jax.tree_util.tree_map(
-        lambda p_ema, p: p_ema * 0.999
-        + p * (1.0 - 0.999),
+        lambda p_ema, p: p_ema * 0.999 + p * (1.0 - 0.999),
         state.params_ema,
         new_params,
     )
@@ -259,6 +276,7 @@ def update_step(
     )
     metrics = {"loss": loss_value, "step": state.step}
     return new_state, density_state, metrics
+
 
 # define haiku initialisation
 @check_shapes("samples: [b, d]")
@@ -277,6 +295,7 @@ def init(samples: Array, key: Key) -> TrainingState:
         key=key,
         step=0,
     )
+
 
 # initialise haiku model
 initial_samples = sde.reference_dist.sample(
@@ -323,9 +342,7 @@ progress_bar = tqdm.tqdm(
 start_time = time.time()
 for step, key in zip(progress_bar, key_iter):
     # Generate samples for potential approximation training from PDDS with naive potential approximation
-    if (
-        step - 1
-    ) % refresh_batch_every == 0:  # refresh samples after every 'epoch'
+    if (step - 1) % refresh_batch_every == 0:  # refresh samples after every 'epoch'
         jit_results, density_state_training = training_sampler(
             rng=key, density_state=density_state_training
         )
@@ -344,7 +361,7 @@ for step, key in zip(progress_bar, key_iter):
         progress_bar.set_description(f"loss {metrics['loss']:.2f}")
 
 end_time = time.time()
-print('Training complete, training time: ', end_time - start_time)
+print("Training complete, training time: ", end_time - start_time)
 
 # +
 # initialise the new potential approximation using the learnt network
@@ -355,9 +372,8 @@ corrected_approx_potential = NNApproximatedPotential(
     base_potential=log_g0_intermediate,
     dim=dim,
     nn_potential_approximator=partial(
-        nn_potential_approximator_intermediate.apply,
-        params=training_state.params_ema
-    )
+        nn_potential_approximator_intermediate.apply, params=training_state.params_ema
+    ),
 )
 
 # Instantiate SMCProblem class based on the learnt potential approximation
@@ -383,7 +399,7 @@ for i in tqdm.trange(100, disable=True):
     smc_result, _ = eval_sampler(subkey)
     log_Z[i] = smc_result["log_normalising_constant"]
 
-print('PDDS1 log Z estimate: ', np.mean(log_Z))
+print("PDDS1 log Z estimate: ", np.mean(log_Z))
 
 # Visualise samples
 n_plot_samples = int(num_particles)
@@ -408,7 +424,10 @@ plt.close(fig)
 
 # +
 log_g0 = RatioPotential(sigma=sigma, target=target_distribution)
-uncorrected_approx_potential = NaivelyApproximatedPotential(base_potential=log_g0, dim=dim, nn_potential_approximator=None)
+uncorrected_approx_potential = NaivelyApproximatedPotential(
+    base_potential=log_g0, dim=dim, nn_potential_approximator=None
+)
+
 
 # Instantiate neural network potential approximator
 @hk.without_apply_rng
@@ -421,7 +440,7 @@ def nn_potential_approximator(lbd: Array, x: Array, density_state: int):
         lbd=lbd, x=x, density_state=density_state
     )
 
-    net = PISGRADNet(hidden_shapes=[64,64], act='gelu', dim=dim)
+    net = PISGRADNet(hidden_shapes=[64, 64], act="gelu", dim=dim)
 
     out = net(lbd, x, residual)
 
@@ -429,6 +448,7 @@ def nn_potential_approximator(lbd: Array, x: Array, density_state: int):
         out = out / (std + 1e-3)
 
     return out, density_state
+
 
 def create_snapshot_potential_approximator(params):
     @check_shapes("lbd: [b]", "x: [b, d]", "return[0]: [b]")
@@ -438,10 +458,11 @@ def create_snapshot_potential_approximator(params):
             params,  # These parameters won't change when training_state is updated
             lbd,
             x,
-            density_state
+            density_state,
         )
 
     return snapshot_potential_approximator
+
 
 # Create a potential object B with the current snapshot of parameters
 # You can choose either regular params or EMA params
@@ -455,38 +476,32 @@ snapshot_approximator = create_snapshot_potential_approximator(snapshot_params)
 updated_potential = NNApproximatedPotential(
     base_potential=log_g0,
     dim=dim,  # Use the same dimension as in your training
-    nn_potential_approximator=snapshot_approximator
+    nn_potential_approximator=snapshot_approximator,
 )
+
 
 # Define loss function
 @check_shapes("samples: [b, d]")
 def guidance_loss_fn(params, samples: Array, key: Key, density_state: int):
     return guidance_loss(
-        key,
-        sde,
-        partial(grad_log_g, params),
-        samples,
-        density_state,
-        log_g0,
-        False
+        key, sde, partial(grad_log_g, params), samples, density_state, log_g0, False
     )
+
+
 @check_shapes("samples: [b, d]")
 def dsm_loss_fn(params, samples: Array, key: Key, density_state: int):
     return dsm_loss(
-        key,
-        sde,
-        partial(grad_log_g, params),
-        samples,
-        density_state,
-        log_g0,
-        False
+        key, sde, partial(grad_log_g, params), samples, density_state, log_g0, False
     )
+
 
 # dsm_loss_fn or guidance_loss_fn
 loss_fn = guidance_loss_fn
 
 # Instantiate learning rate schedulers
-learning_rate_schedule_unlooped = optax.exponential_decay(init_value=1e-3, transition_steps=50, decay_rate=0.95)
+learning_rate_schedule_unlooped = optax.exponential_decay(
+    init_value=1e-3, transition_steps=50, decay_rate=0.95
+)
 learning_rate_schedule = loop_schedule(
     schedule=learning_rate_schedule_unlooped, freq=10000
 )
@@ -496,6 +511,7 @@ optimizer = optax.chain(
     optax.scale_by_schedule(learning_rate_schedule),
     optax.scale(-1.0),
 )
+
 
 # define model update function
 @jax.jit
@@ -511,8 +527,7 @@ def update_step(
     updates, new_opt_state = optimizer.update(grads, state.opt_state)
     new_params = optax.apply_updates(state.params, updates)
     new_params_ema = jax.tree_util.tree_map(
-        lambda p_ema, p: p_ema * 0.999
-        + p * (1.0 - 0.999),
+        lambda p_ema, p: p_ema * 0.999 + p * (1.0 - 0.999),
         state.params_ema,
         new_params,
     )
@@ -525,6 +540,7 @@ def update_step(
     )
     metrics = {"loss": loss_value, "step": state.step}
     return new_state, density_state, metrics
+
 
 # # define haiku initialisation
 # @check_shapes("samples: [b, d]")
@@ -586,9 +602,7 @@ progress_bar = tqdm.tqdm(
 start_time = time.time()
 for step, key in zip(progress_bar, key_iter):
     # Generate samples for potential approximation training from PDDS with naive potential approximation
-    if (
-        step - 1
-    ) % refresh_batch_every == 0:  # refresh samples after every 'epoch'
+    if (step - 1) % refresh_batch_every == 0:  # refresh samples after every 'epoch'
         jit_results, density_state_training = training_sampler(
             rng=key, density_state=density_state_training
         )
@@ -607,7 +621,7 @@ for step, key in zip(progress_bar, key_iter):
         progress_bar.set_description(f"loss {metrics['loss']:.2f}")
 
 end_time = time.time()
-print('Training complete, training time: ', end_time - start_time)
+print("Training complete, training time: ", end_time - start_time)
 # -
 
 # Now we reassess performance of the PDDS sampler based on the newly-learnt potential approximation.
@@ -619,9 +633,8 @@ corrected_approx_potential = NNApproximatedPotential(
     base_potential=log_g0,
     dim=dim,
     nn_potential_approximator=partial(
-        nn_potential_approximator.apply,
-        params=training_state.params_ema
-    )
+        nn_potential_approximator.apply, params=training_state.params_ema
+    ),
 )
 
 # Instantiate SMCProblem class based on the learnt potential approximation
@@ -647,7 +660,7 @@ for i in tqdm.trange(100, disable=True):
     smc_result, _ = eval_sampler(subkey)
     log_Z[i] = smc_result["log_normalising_constant"]
 
-print('PDDS1 log Z estimate: ', np.mean(log_Z))
+print("PDDS1 log Z estimate: ", np.mean(log_Z))
 
 # Visualise samples
 n_plot_samples = int(num_particles)
@@ -667,5 +680,3 @@ plt.legend()
 plt.show()
 plt.close(fig)
 # -
-
-
