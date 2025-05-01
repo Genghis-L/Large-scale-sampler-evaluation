@@ -123,7 +123,7 @@ for i in tqdm.trange(100, disable=True):
 
 print('Naive log Z estimate: ', np.mean(log_Z))
 
-# Visualise target, reference and samples
+# Replace the visualization section with 2D scatter plot
 n_plot_samples = int(num_particles)
 idx = jnp.arange(int(num_particles))
 key, subkey1, subkey2, subkey3 = jax.random.split(key, 4)
@@ -132,13 +132,19 @@ final_samples = resampler(
     rng=subkey3, samples=smc_result["samples"], log_weights=smc_result["log_weights"]
 )["samples"]
 
-fig = plt.figure()
-ax = fig.gca()
-sns.kdeplot(final_samples[idx, 0], ax=ax, label="Naive approximation")
-sns.kdeplot(target_samples[:, 0], ax=ax, label="Target")
+# Create 2D scatter plot
+plt.figure(figsize=(8, 6))
+plt.scatter(target_samples[:, 0], target_samples[:, 1], alpha=0.5, label="Target", s=10)
+plt.scatter(final_samples[idx, 0], final_samples[idx, 1], alpha=0.5, label="Naive approximation", s=10)
+plt.title(f"2D Gaussian Mixture Samples (mean_scale={mean_scale})")
+plt.xlabel("x")
+plt.ylabel("y")
 plt.legend()
+plt.grid(True)
+plt.axis('equal')
+plt.tight_layout()
 plt.show()
-plt.close(fig)
+plt.close()
 # -
 
 # ### Learn neural network potential appproximation
@@ -388,7 +394,7 @@ for i in tqdm.trange(100, disable=True):
 
 print('PDDS1 log Z estimate: ', np.mean(log_Z))
 
-# Visualise samples
+# For the second visualization after training
 n_plot_samples = int(num_particles)
 idx = jnp.arange(int(num_particles))
 key, subkey1, subkey2, subkey3 = jax.random.split(key, 4)
@@ -397,11 +403,16 @@ final_samples = resampler(
     rng=subkey3, samples=smc_result["samples"], log_weights=smc_result["log_weights"]
 )["samples"]
 
-# Visualise target, reference and samples
-fig = plt.figure()
-ax = fig.gca()
-sns.kdeplot(final_samples[idx, 0], ax=ax, label="PDDS1")
-sns.kdeplot(target_samples[:, 0], ax=ax, label="Target")
+# Create 2D scatter plot
+plt.figure(figsize=(8, 6))
+plt.scatter(target_samples[:, 0], target_samples[:, 1], alpha=0.5, label="Target", s=10)
+plt.scatter(final_samples[idx, 0], final_samples[idx, 1], alpha=0.5, label="PDDS1", s=10)
+plt.title(f"2D Gaussian Mixture Samples with PDDS (mean_scale={mean_scale})")
+plt.xlabel("x")
+plt.ylabel("y")
 plt.legend()
+plt.grid(True)
+plt.axis('equal')
+plt.tight_layout()
 plt.show()
-plt.close(fig)
+plt.close()

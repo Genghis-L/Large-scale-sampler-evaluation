@@ -126,7 +126,45 @@ for i in tqdm.trange(100, disable=True):
 
 print('Naive log Z estimate: ', np.mean(log_Z))
 
-# Visualise target, reference and samples
+# Add a helper function for 2D visualization
+def plot_2d_samples(target_samples, final_samples, label, title=None, save_filename=None):
+    """
+    Plot 2D scatter plot comparing target and sampled distributions.
+    
+    Args:
+        target_samples: Samples from the target distribution
+        final_samples: Samples from the sampling algorithm
+        label: Label for the sampling algorithm
+        title: Optional title for the plot
+        save_filename: Optional filename to save the plot
+    """
+    plt.figure(figsize=(8, 6))
+    plt.scatter(target_samples[:, 0], target_samples[:, 1], alpha=0.5, label="Target", s=10)
+    plt.scatter(final_samples[:, 0], final_samples[:, 1], alpha=0.5, label=label, s=10)
+    
+    if title:
+        plt.title(title)
+    else:
+        plt.title(f"2D Gaussian Mixture Samples (mean_scale={mean_scale})")
+    
+    plt.xlabel("x")
+    plt.ylabel("y")
+    plt.legend()
+    plt.grid(True)
+    plt.axis('equal')
+    plt.tight_layout()
+    
+    if save_filename:
+        dir = os.path.dirname(save_filename)
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+        plt.savefig(save_filename, dpi=300, bbox_inches='tight')
+        print(f"Figure saved as: {save_filename}")
+    
+    plt.show()
+    plt.close()
+
+# Replace the first visualization section
 n_plot_samples = int(num_particles)
 idx = jnp.arange(int(num_particles))
 key, subkey1, subkey2, subkey3 = jax.random.split(key, 4)
@@ -135,13 +173,12 @@ final_samples = resampler(
     rng=subkey3, samples=smc_result["samples"], log_weights=smc_result["log_weights"]
 )["samples"]
 
-fig = plt.figure()
-ax = fig.gca()
-sns.kdeplot(final_samples[idx, 0], ax=ax, label="Naive approximation")
-sns.kdeplot(target_samples[:, 0], ax=ax, label="Target")
-plt.legend()
-plt.show()
-plt.close(fig)
+plot_2d_samples(
+    target_samples, 
+    final_samples, 
+    label="Naive approximation",
+    title=f"2D Gaussian Mixture with Naive Approximation (β={beta:.1f})"
+)
 # -
 
 # ### Learn neural network potential appproximation
@@ -399,14 +436,12 @@ final_samples = resampler(
     rng=subkey3, samples=smc_result["samples"], log_weights=smc_result["log_weights"]
 )["samples"]
 
-# Visualise target, reference and samples
-fig = plt.figure()
-ax = fig.gca()
-sns.kdeplot(final_samples[idx, 0], ax=ax, label="PDDS1")
-sns.kdeplot(target_samples[:, 0], ax=ax, label="Target")
-plt.legend()
-plt.show()
-plt.close(fig)
+plot_2d_samples(
+    target_samples, 
+    final_samples, 
+    label="PDDS1",
+    title=f"2D Gaussian Mixture with PDDS (β={beta:.1f})"
+)
 # -
 
 # # Continued training
@@ -664,14 +699,29 @@ final_samples = resampler(
     rng=subkey3, samples=smc_result["samples"], log_weights=smc_result["log_weights"]
 )["samples"]
 
-# Visualise target, reference and samples
-fig = plt.figure()
-ax = fig.gca()
-sns.kdeplot(final_samples[idx, 0], ax=ax, label="PDDS1")
-sns.kdeplot(target_samples[:, 0], ax=ax, label="Target")
-plt.legend()
-plt.show()
-plt.close(fig)
+plot_2d_samples(
+    target_samples, 
+    final_samples, 
+    label="PDDS1",
+    title=f"2D Gaussian Mixture with PDDS (β={beta:.1f})"
+)
 # -
+
+# Replace the final visualization section
+n_plot_samples = int(num_particles)
+idx = jnp.arange(int(num_particles))
+key, subkey1, subkey2, subkey3 = jax.random.split(key, 4)
+target_samples = target_distribution.sample(subkey2, num_samples=n_plot_samples)
+final_samples = resampler(
+    rng=subkey3, samples=smc_result["samples"], log_weights=smc_result["log_weights"]
+)["samples"]
+
+plot_2d_samples(
+    target_samples, 
+    final_samples, 
+    label="PDDS1",
+    title=f"2D Gaussian Mixture with PDDS (β=1.0)",
+    save_filename="tmp_figs/GM_annealing_final.png"
+)
 
 

@@ -70,7 +70,7 @@ from pdds.resampling import resampler
 # +
 # global variables
 dim=2
-mean_scale = 2.5
+mean_scale = 3.0    # changed from 2.5 to 3.0 to match other experiments
 sigma=1.0
 t_0=0.0
 t_f=1.0
