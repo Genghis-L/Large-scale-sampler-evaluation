@@ -70,7 +70,7 @@ from pdds.resampling import resampler
 # +
 # global variables
 dim=2
-mean_scale = 1
+mean_scale = 3.0
 sigma=1.0
 t_0=0.0
 t_f=1.0
