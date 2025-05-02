@@ -123,7 +123,7 @@ for i in tqdm.trange(100, disable=True):
 
 print('Naive log Z estimate: ', np.mean(log_Z))
 
-# Replace the visualization section with 2D scatter plot
+# Replace the visualization section with multiple plots
 n_plot_samples = int(num_particles)
 idx = jnp.arange(int(num_particles))
 key, subkey1, subkey2, subkey3 = jax.random.split(key, 4)
@@ -132,16 +132,54 @@ final_samples = resampler(
     rng=subkey3, samples=smc_result["samples"], log_weights=smc_result["log_weights"]
 )["samples"]
 
-# Create 2D scatter plot
-plt.figure(figsize=(8, 6))
-plt.scatter(target_samples[:, 0], target_samples[:, 1], alpha=0.5, label="Target", s=10)
-plt.scatter(final_samples[idx, 0], final_samples[idx, 1], alpha=0.5, label="Naive approximation", s=10)
-plt.title(f"Hard 2D Gaussian Mixture (mean_scale={mean_scale})")
-plt.xlabel("x")
-plt.ylabel("y")
-plt.legend()
-plt.grid(True)
-plt.axis('equal')
+# Create a figure with subplots for 1D marginals and 2D scatter
+fig, axs = plt.subplots(2, 2, figsize=(16, 12))
+
+# Plot 2D scatter
+axs[0, 0].scatter(target_samples[:, 0], target_samples[:, 1], alpha=0.5, label="Target", s=10)
+axs[0, 0].scatter(final_samples[idx, 0], final_samples[idx, 1], alpha=0.5, label="Naive approximation", s=10)
+axs[0, 0].set_title(f"Hard 2D Gaussian Mixture (mean_scale={mean_scale})")
+axs[0, 0].set_xlabel("x")
+axs[0, 0].set_ylabel("y")
+axs[0, 0].legend()
+axs[0, 0].grid(True)
+axs[0, 0].axis('equal')
+
+# Plot 1D marginal x-axis
+sns.kdeplot(target_samples[:, 0], label="Target", ax=axs[0, 1])
+sns.kdeplot(final_samples[:, 0], label="Naive approximation", ax=axs[0, 1])
+axs[0, 1].set_title("1D Marginal (x-axis)")
+axs[0, 1].set_xlabel("x")
+axs[0, 1].legend()
+
+# Plot 1D marginal y-axis
+sns.kdeplot(target_samples[:, 1], label="Target", ax=axs[1, 0])
+sns.kdeplot(final_samples[:, 1], label="Naive approximation", ax=axs[1, 0])
+axs[1, 0].set_title("1D Marginal (y-axis)")
+axs[1, 0].set_xlabel("y")
+axs[1, 0].legend()
+
+# Plot ESS (if available)
+if "ess_history" in smc_result:
+    axs[1, 1].plot(np.arange(len(smc_result["ess_history"])), smc_result["ess_history"])
+    axs[1, 1].set_title("Effective Sample Size (ESS)")
+    axs[1, 1].set_xlabel("Step")
+    axs[1, 1].set_ylabel("ESS")
+else:
+    axs[1, 1].text(0.5, 0.5, "ESS history not available", ha='center', va='center')
+    axs[1, 1].set_title("Effective Sample Size (ESS)")
+
+# Plot MCMC acceptance rate (if available)
+# This is commented out because there are no MCMC steps in this example
+# if "mcmc_acceptance_rate" in smc_result:
+#     axs[1, 2].plot(np.arange(len(smc_result["mcmc_acceptance_rate"])), smc_result["mcmc_acceptance_rate"])
+#     axs[1, 2].set_title("MCMC Acceptance Rate")
+#     axs[1, 2].set_xlabel("Step")
+#     axs[1, 2].set_ylabel("Acceptance Rate")
+# else:
+#     axs[1, 2].text(0.5, 0.5, "MCMC not used in this example", ha='center', va='center')
+#     axs[1, 2].set_title("MCMC Acceptance Rate")
+
 plt.tight_layout()
 plt.show()
 plt.close()
@@ -394,7 +432,7 @@ for i in tqdm.trange(100, disable=True):
 
 print('PDDS1 log Z estimate: ', np.mean(log_Z))
 
-# For the second visualization after training
+# For the second visualization after training - multiple plots in one figure
 n_plot_samples = int(num_particles)
 idx = jnp.arange(int(num_particles))
 key, subkey1, subkey2, subkey3 = jax.random.split(key, 4)
@@ -403,16 +441,103 @@ final_samples = resampler(
     rng=subkey3, samples=smc_result["samples"], log_weights=smc_result["log_weights"]
 )["samples"]
 
-# Create 2D scatter plot
-plt.figure(figsize=(8, 6))
-plt.scatter(target_samples[:, 0], target_samples[:, 1], alpha=0.5, label="Target", s=10)
-plt.scatter(final_samples[idx, 0], final_samples[idx, 1], alpha=0.5, label="PDDS1", s=10)
-plt.title(f"2D Gaussian Mixture Samples with PDDS (mean_scale={mean_scale})")
-plt.xlabel("x")
-plt.ylabel("y")
-plt.legend()
-plt.grid(True)
-plt.axis('equal')
+# Create a figure with 2 rows of plots
+fig, axs = plt.subplots(2, 3, figsize=(18, 12))
+
+# First row: 2D scatter and 1D marginals
+# Plot 2D scatter
+axs[0, 0].scatter(target_samples[:, 0], target_samples[:, 1], alpha=0.5, label="Target", s=10)
+axs[0, 0].scatter(final_samples[idx, 0], final_samples[idx, 1], alpha=0.5, label="PDDS1", s=10)
+axs[0, 0].set_title(f"2D Gaussian Mixture (mean_scale={mean_scale})")
+axs[0, 0].set_xlabel("x")
+axs[0, 0].set_ylabel("y")
+axs[0, 0].legend()
+axs[0, 0].grid(True)
+axs[0, 0].axis('equal')
+
+# Plot 1D marginal x-axis
+sns.kdeplot(target_samples[:, 0], label="Target", ax=axs[0, 1])
+sns.kdeplot(final_samples[:, 0], label="PDDS1", ax=axs[0, 1])
+axs[0, 1].set_title("1D Marginal (x-axis)")
+axs[0, 1].set_xlabel("x")
+axs[0, 1].legend()
+
+# Plot 1D marginal y-axis
+sns.kdeplot(target_samples[:, 1], label="Target", ax=axs[0, 2])
+sns.kdeplot(final_samples[:, 1], label="PDDS1", ax=axs[0, 2])
+axs[0, 2].set_title("1D Marginal (y-axis)")
+axs[0, 2].set_xlabel("y")
+axs[0, 2].legend()
+
+# Second row: ESS and MCMC acceptance rate (if available)
+if "ess_history" in smc_result:
+    axs[1, 0].plot(np.arange(len(smc_result["ess_history"])), smc_result["ess_history"])
+    axs[1, 0].set_title("Effective Sample Size (ESS)")
+    axs[1, 0].set_xlabel("Step")
+    axs[1, 0].set_ylabel("ESS")
+else:
+    axs[1, 0].text(0.5, 0.5, "ESS history not available", ha='center', va='center')
+    axs[1, 0].set_title("Effective Sample Size (ESS)")
+
+# Plot MCMC acceptance rate (if available)
+if "mcmc_acceptance_rate" in smc_result:
+    axs[1, 1].plot(np.arange(len(smc_result["mcmc_acceptance_rate"])), smc_result["mcmc_acceptance_rate"])
+    axs[1, 1].set_title("MCMC Acceptance Rate")
+    axs[1, 1].set_xlabel("Step")
+    axs[1, 1].set_ylabel("Acceptance Rate")
+else:
+    axs[1, 1].text(0.5, 0.5, "MCMC not used in this example", ha='center', va='center')
+    axs[1, 1].set_title("MCMC Acceptance Rate")
+
+# Add a plot to compare target and final samples histogram
+axs[1, 2].hist(target_samples[:, 0], bins=30, alpha=0.5, label="Target X", density=True)
+axs[1, 2].hist(final_samples[:, 0], bins=30, alpha=0.5, label="PDDS1 X", density=True)
+axs[1, 2].set_title("Histogram Comparison (x-axis)")
+axs[1, 2].set_xlabel("x")
+axs[1, 2].legend()
+
+plt.tight_layout()
+plt.show()
+plt.close()
+
+# Create a compact version with just the main plots in a single row
+fig, axs = plt.subplots(2, 2, figsize=(16, 10))
+
+# First row: 2D scatter and 1D marginals in one row
+# Plot 2D scatter
+axs[0, 0].scatter(target_samples[:, 0], target_samples[:, 1], alpha=0.5, label="Target", s=10)
+axs[0, 0].scatter(final_samples[idx, 0], final_samples[idx, 1], alpha=0.5, label="PDDS1", s=10)
+axs[0, 0].set_title(f"2D Gaussian Mixture")
+axs[0, 0].set_xlabel("x")
+axs[0, 0].set_ylabel("y")
+axs[0, 0].legend()
+axs[0, 0].grid(True)
+axs[0, 0].axis('equal')
+
+# Plot 1D marginal x-axis
+sns.kdeplot(target_samples[:, 0], label="Target", ax=axs[0, 1])
+sns.kdeplot(final_samples[:, 0], label="PDDS1", ax=axs[0, 1])
+axs[0, 1].set_title("1D Marginal (x-axis)")
+axs[0, 1].set_xlabel("x")
+axs[0, 1].legend()
+
+# Plot 1D marginal y-axis
+sns.kdeplot(target_samples[:, 1], label="Target", ax=axs[1, 0])
+sns.kdeplot(final_samples[:, 1], label="PDDS1", ax=axs[1, 0])
+axs[1, 0].set_title("1D Marginal (y-axis)")
+axs[1, 0].set_xlabel("y")
+axs[1, 0].legend()
+
+# Second row: ESS
+if "ess_history" in smc_result:
+    axs[1, 1].plot(np.arange(len(smc_result["ess_history"])), smc_result["ess_history"])
+    axs[1, 1].set_title("Effective Sample Size (ESS)")
+    axs[1, 1].set_xlabel("Step")
+    axs[1, 1].set_ylabel("ESS")
+else:
+    axs[1, 1].text(0.5, 0.5, "ESS history not available", ha='center', va='center')
+    axs[1, 1].set_title("Effective Sample Size (ESS)")
+
 plt.tight_layout()
 plt.show()
 plt.close()

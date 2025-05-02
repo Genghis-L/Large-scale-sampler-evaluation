@@ -13,6 +13,7 @@ from pdds.utils.more_utils import load_data
 
 from jaxtyping import Float as f, PRNGKeyArray, Array, install_import_hook
 import typing as tp
+from typing import Optional, Tuple, Dict, Any, Union
 
 from chex import assert_axis_dimension, assert_shape, assert_equal_shape
 
@@ -23,11 +24,22 @@ Key = PRNGKeyArray
 
 
 class Distribution(metaclass=abc.ABCMeta):
+    """Base class for probability distributions.
+    
+    This abstract class defines the interface for probability distributions
+    used in the PDDS framework. All distributions must implement methods for
+    sampling and evaluating log densities.
+    
+    Args:
+        dim: Dimensionality of the distribution
+        is_target: If True, density evaluations increment the density_state counter
+    """
     def __init__(self, dim: int, is_target: bool):
+        if dim <= 0:
+            raise ValueError(f"Dimension must be positive, got {dim}")
+        
         self.dim = dim
-        self.is_target = (
-            is_target  # marks whether or not to incrememt density_state on call
-        )
+        self.is_target = is_target  # marks whether or not to increment density_state on call
 
     @abc.abstractmethod
     @check_shapes("return: [b, d]")
@@ -35,11 +47,13 @@ class Distribution(metaclass=abc.ABCMeta):
         """Produce samples from the specified distribution.
 
         Args:
-            key: Jax key
-            num_samples: int, number of samples to draw.
+            key: Jax random key
+            num_samples: Number of samples to draw
+            
         Returns:
-            Array of shape (num_samples, dim) containing samples from the distribution.
+            Array of shape (num_samples, dim) containing samples from the distribution
         """
+        pass
 
     @abc.abstractmethod
     @check_shapes("x: [b, d]", "return[0]: [b]")
@@ -49,17 +63,32 @@ class Distribution(metaclass=abc.ABCMeta):
         """Evaluate the log likelihood of the specified distribution.
 
         Args:
-            x: Samples.
-            density_state: int, tracks number of density evaluations.
+            x: Batch of points to evaluate 
+            density_state: Counter for density evaluations
+            
         Returns:
-            Array of shape (batch_size,) containing values of log densities.
-            Int containing updated density state.
+            Tuple of (log densities for each point in x, updated density_state)
         """
+        pass
+    
+    def __str__(self) -> str:
+        """Return a string representation of the distribution."""
+        return f"{self.__class__.__name__}(dim={self.dim}, is_target={self.is_target})"
 
 
 class WhitenedDistributionWrapper(Distribution):
     """Reparametrizes the target distribution based on the
-    learnt variational reference measure."""
+    learnt variational reference measure.
+    
+    This wrapper transforms a distribution by standardizing it according 
+    to provided means and scales.
+    
+    Args:
+        target: The base distribution to transform
+        vi_means: Mean vector for the transformation
+        vi_scales: Scale vector for the transformation
+        is_target: If True, density evaluations increment the density_state counter
+    """
 
     @check_shapes("vi_means: [d]", "vi_scales: [d]")
     def __init__(
@@ -70,9 +99,19 @@ class WhitenedDistributionWrapper(Distribution):
         is_target: bool = False,
     ):
         super().__init__(dim=target.dim, is_target=is_target)
+        
+        # Validate inputs
+        if vi_means.shape[0] != target.dim:
+            raise ValueError(f"vi_means dimension {vi_means.shape[0]} must match target dimension {target.dim}")
+        if vi_scales.shape[0] != target.dim:
+            raise ValueError(f"vi_scales dimension {vi_scales.shape[0]} must match target dimension {target.dim}")
+        if jnp.any(vi_scales <= 0):
+            raise ValueError("vi_scales must be positive")
+            
         self.target = target
         self.vi_means = vi_means
         self.vi_scales = vi_scales
+        
         # for GaussianRatioAnalyticPotential (only works when dim=1)
         if target.dim == 1:
             self._mean = vi_means[0]
@@ -82,22 +121,58 @@ class WhitenedDistributionWrapper(Distribution):
     def evaluate_log_density(
         self, x: Array, density_state: int
     ) -> tp.Tuple[Array, int]:
+        """Evaluate the log density of the whitened distribution.
+        
+        Args:
+            x: Batch of points to evaluate
+            density_state: Counter for density evaluations
+            
+        Returns:
+            Tuple of (log densities, updated density_state)
+        """
+        # Transform x to the original space
         transformed_x = self.vi_means + x * self.vi_scales
+        
+        # Evaluate in the original space
         out, density_state = self.target.evaluate_log_density(
             transformed_x, density_state
         )
-        out += jnp.log(jnp.prod(self.vi_scales))
+        
+        # Apply the change of variables formula - add log|det(Jacobian)|
+        log_det_jacobian = jnp.sum(jnp.log(self.vi_scales))
+        out += log_det_jacobian
+        
         return out, density_state
 
     @check_shapes("return: [b, d]")
     def sample(self, key: Key, num_samples: int) -> Array:
+        """Sample from the whitened distribution.
+        
+        Args:
+            key: JAX random key
+            num_samples: Number of samples to generate
+            
+        Returns:
+            Array of samples with shape (num_samples, dim)
+        """
         original_samples = self.target.sample(key, num_samples)
+        # Transform the samples to the whitened space
         return (original_samples - self.vi_means) / self.vi_scales
 
 
 class NormalDistribution(Distribution):
-    """Multivariate normal distribution with shared diagonal covariance only. Scale
-    is a scalar value giving the shared scale for the diagonal covariance."""
+    """Multivariate normal distribution with shared diagonal covariance.
+    
+    This class implements a multivariate normal distribution where all
+    dimensions share the same variance (diagonal covariance matrix with
+    constant diagonal elements).
+    
+    Args:
+        mean: Mean vector of shape (1, dim)
+        scale: Scale parameter (standard deviation)
+        dim: Dimensionality of the distribution
+        is_target: If True, marks this as a target distribution
+    """
 
     @check_shapes("mean: [b, d]")
     def __init__(
@@ -108,14 +183,31 @@ class NormalDistribution(Distribution):
         is_target: bool = False,
     ):
         super().__init__(dim, is_target)
+        
+        # Validate inputs
         assert_axis_dimension(mean, 1, dim)
+        if isinstance(scale, (Array, jnp.ndarray)) and jnp.any(scale <= 0):
+            raise ValueError("Scale must be positive")
+        elif isinstance(scale, (float, int)) and scale <= 0:
+            raise ValueError("Scale must be positive")
+            
         self._mean = mean
         self._scale = scale
+        # Pre-compute covariance matrix for efficiency
+        self._cov_matrix = self._scale**2 * jnp.eye(self.dim)
 
     @check_shapes("return: [b, d]")
     def sample(self, key: Key, num_samples: int) -> Array:
-        batched_sample_shape = (num_samples,) + (self.dim,)
-        self._cov_matrix = self._scale**2 * jnp.eye(self.dim)
+        """Sample from the normal distribution.
+        
+        Args:
+            key: JAX random key
+            num_samples: Number of samples to generate
+            
+        Returns:
+            Array of samples with shape (num_samples, dim)
+        """
+        batched_sample_shape = (num_samples, self.dim)
         samples = jax.random.multivariate_normal(
             key=key, mean=self._mean, cov=self._cov_matrix, shape=(num_samples,)
         )
@@ -126,6 +218,15 @@ class NormalDistribution(Distribution):
     def evaluate_log_density(
         self, x: Array, density_state: int
     ) -> tp.Tuple[Array, int]:
+        """Evaluate the log density at given points.
+        
+        Args:
+            x: Batch of points to evaluate
+            density_state: Counter for density evaluations
+            
+        Returns:
+            Tuple of (log densities, updated density_state)
+        """
         out = jax.scipy.stats.multivariate_normal.logpdf(
             x, mean=self._mean, cov=self._scale**2
         )
@@ -211,7 +312,27 @@ class MeanFieldNormalDistribution(Distribution):
 def NormalDistributionWrapper(
     mean: float, scale: float, dim: int = 1, is_target: bool = False
 ) -> Distribution:
-    """Wraps the NormalDistribution class for easy initialisation from Hydra configs."""
+    """Create a NormalDistribution with scalar mean and scale.
+    
+    This factory function creates a NormalDistribution with the mean
+    repeated across all dimensions. It's useful for easy initialization 
+    from configuration files.
+    
+    Args:
+        mean: Mean value (will be repeated for all dimensions)
+        scale: Scale parameter (standard deviation)
+        dim: Dimensionality of the distribution
+        is_target: If True, marks this as a target distribution
+        
+    Returns:
+        A NormalDistribution instance
+        
+    Example:
+        >>> dist = NormalDistributionWrapper(0.0, 1.0, dim=3)
+    """
+    if scale <= 0:
+        raise ValueError(f"Scale must be positive, got {scale}")
+        
     means = mean * jnp.ones((1, dim))
     return NormalDistribution(means, scale, dim, is_target)
 
@@ -219,20 +340,42 @@ def NormalDistributionWrapper(
 class ChallengingTwoDimensionalMixture(Distribution):
     """A challenging mixture of Gaussians in two dimensions.
     From annealed_flow_transport codebase.
-    Modified with beta scaling parameter.
+    
+    This distribution consists of a mixture of 6 Gaussian components arranged in a challenging 
+    configuration. The beta parameter allows tempering the distribution, effectively scaling
+    the log-density.
+    
+    Args:
+        mean_scale: Scale factor applied to all component means
+        dim: Dimensionality (must be 2)
+        is_target: If True, this distribution is marked as a target, incrementing density_state
+        beta: Tempering parameter in (0, 1]. Scales the log-density by this factor
     """
 
     def __init__(self, mean_scale: float, dim: int = 2, is_target: bool = False, beta: float = 1.0):
+        if dim != 2:
+            raise ValueError(f"ChallengingTwoDimensionalMixture only supports dim=2, got {dim}")
+        if beta <= 0 or beta > 1:
+            raise ValueError(f"Beta must be in range (0, 1], got {beta}")
+            
         super().__init__(dim, is_target)
         self.n_components = 6
+        self.mean_scale = mean_scale
+        self.beta = beta
+        
+        # Define component means
         self.mean_a = jnp.array([3.0, 0.0])
         self.mean_b = jnp.array([-2.5, 0.0])
         self.mean_c = jnp.array([2.0, 3.0])
         self.means = jnp.stack((self.mean_a, self.mean_b, self.mean_c), axis=0) * mean_scale
+        
+        # Define component covariances
         self.cov_a = jnp.array([[0.7, 0.0], [0.0, 0.05]])
         self.cov_b = jnp.array([[0.7, 0.0], [0.0, 0.05]])
         self.cov_c = jnp.array([[1.0, 0.95], [0.95, 1.0]])
         self.covs = jnp.stack((self.cov_a, self.cov_b, self.cov_c), axis=0)
+        
+        # All components for sampling
         self.all_means = jnp.array(
             [[3.0, 0.0], [0.0, 3.0], [-2.5, 0.0], [0.0, -2.5], [2.0, 3.0], [3.0, 2.0]]
         ) * mean_scale
@@ -246,33 +389,73 @@ class ChallengingTwoDimensionalMixture(Distribution):
                 [[1.0, 0.95], [0.95, 1.0]],
             ]
         )
-        self.beta = beta
+        
+        # Pre-compute Cholesky decompositions for efficiency
+        self._chol_factors = jnp.linalg.cholesky(self.covs)
 
     @check_shapes("x: [d]", "return: []")
     def raw_log_density(self, x: Array) -> Array:
-        """A raw log density that we will then symmetrize."""
+        """Calculate the raw log density of the non-symmetric distribution.
+        
+        Args:
+            x: Input point [d]
+            
+        Returns:
+            Log density value at x
+        """
+        # Component weights (equal weighting)
         log_weights = jnp.log(jnp.array([1.0 / 3, 1.0 / 3.0, 1.0 / 3.0]))
-        l = jnp.linalg.cholesky(self.covs)
+        
+        # Use pre-computed Cholesky factors
+        l = self._chol_factors
+        
+        # Calculate Mahalanobis distance term
         y = slinalg.solve_triangular(l, x[None, :] - self.means, lower=True, trans=0)
-        mahalanobis_term = -1 / 2 * jnp.einsum("...i,...i->...", y, y)
+        mahalanobis_term = -0.5 * jnp.einsum("...i,...i->...", y, y)
+        
+        # Calculate normalizing term
         n = self.means.shape[-1]
         normalizing_term = -n / 2 * np.log(2 * np.pi) - jnp.log(
             l.diagonal(axis1=-2, axis2=-1)
         ).sum(axis=1)
+        
+        # Calculate individual component log PDFs
         individual_log_pdfs = mahalanobis_term + normalizing_term
+        
+        # Apply mixture weights
         mixture_weighted_pdfs = individual_log_pdfs + log_weights
+        
+        # Apply beta tempering and return
         return logsumexp(mixture_weighted_pdfs) * self.beta
 
     @check_shapes("x: [d]", "return: []")
     def make_2d_invariant(self, log_density, x: Array) -> Array:
+        """Make the density symmetric by averaging flipped coordinates.
+        
+        Args:
+            log_density: The log density function to symmetrize
+            x: Input point [d]
+            
+        Returns:
+            Symmetrized log density at x
+        """
         density_a = log_density(x)
-        density_b = log_density(np.flip(x))
+        density_b = log_density(jnp.flip(x))
         return jnp.logaddexp(density_a, density_b) - jnp.log(2)
 
     @check_shapes("x: [b, d]", "return[0]: [b]")
     def evaluate_log_density(
         self, x: Array, density_state: int
     ) -> tp.Tuple[Array, int]:
+        """Evaluate the log density at the given points.
+        
+        Args:
+            x: Batch of points to evaluate [b, d]
+            density_state: Counter for density evaluations
+            
+        Returns:
+            Tuple of (log densities, updated density_state)
+        """
         density_func = lambda x: self.make_2d_invariant(self.raw_log_density, x)
         out = jax.vmap(density_func)(x)
         density_state += self.is_target * x.shape[0]
@@ -280,14 +463,43 @@ class ChallengingTwoDimensionalMixture(Distribution):
 
     @check_shapes("return: [b, d]")
     def sample(self, key: Key, num_samples: int) -> Array:
-        assert self.beta == 1.0, "Sampling only implemented for unannealed version."
+        """Sample from the Gaussian mixture.
+        
+        Note: For beta < 1.0, this sampling method is approximate and 
+        doesn't properly account for the tempering parameter.
+        For visualization during annealing, this is acceptable as we're
+        primarily comparing against the target samples.
+        
+        Args:
+            key: JAX random key
+            num_samples: Number of samples to generate
+            
+        Returns:
+            Samples from the distribution [b, d]
+        """
+        if self.beta < 1.0:
+            # Log warning about approximate sampling
+            import warnings
+            warnings.warn(
+                f"Sampling with beta={self.beta} < 1.0 is approximate and "
+                "doesn't properly account for the tempering parameter."
+            )
+            
         batched_sample_shape = (num_samples,) + (self.dim,)
+        
+        # Split key for component selection and sampling
         subkey1, subkey2 = jax.random.split(key)
+        
+        # Randomly select mixture components
         components = jax.random.choice(
             subkey1, a=int(self.n_components), shape=(num_samples,)
         ).astype(int)
+        
+        # Get the corresponding means and covariances
         means = self.all_means[components]
         covs = self.all_covs[components]
+        
+        # Sample from the selected Gaussians
         samples = jax.random.multivariate_normal(
             key=subkey2, mean=means, cov=covs, shape=(num_samples,)
         )
