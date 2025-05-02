@@ -70,7 +70,7 @@ from pdds.resampling import resampler
 # +
 # global variables
 dim=2
-mean_scale = 3.0    # changed from 2.5 to 3.0 to match other experiments
+mean_scale = 3.0  
 sigma=1.0
 t_0=0.0
 t_f=1.0
@@ -129,49 +129,32 @@ for i in tqdm.trange(100, disable=True):
 
 print('Naive log Z estimate: ', np.mean(log_Z))
 
-def plot_samples(target_samples, final_samples, label, figtype, title=None, save_filename=None):
-    # Visualise target, reference and samples
-    if figtype == 1:
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 4))
-        # Left subplot: KDE plot (as you already had)
-        sns.kdeplot(target_samples[:, 0], ax=ax1, bw_adjust=0.5, label="Target")
-        sns.kdeplot(final_samples[idx, 0], ax=ax1, bw_adjust=0.5, label=label)
-        ax1.legend()
-        ax1.set_title(f"1D Marginal Distribution")
-
-        # Right subplot: Scatter plot of first two dimensions
-        ax2.scatter(target_samples[:, 0], target_samples[:, 1], alpha=0.5, label="Target", s=10)
-        ax2.scatter(final_samples[idx, 0], final_samples[idx, 1], alpha=0.5, label=label, s=10)
-        ax2.legend()
-        ax2.set_title(f"2D Sample Distribution")
-        ax2.set_aspect('equal')  # Makes the plot have equal scale on both axes
-        plt.tight_layout()
-
-    if figtype == 2:
-        fig, ax = plt.subplots(1, 1, figsize=(4, 4))
-        # Right subplot: Scatter plot of first two dimensions
-        ax.scatter(target_samples[:, 0], target_samples[:, 1], alpha=0.5, label="Target", s=10)
-        ax.scatter(final_samples[idx, 0], final_samples[idx, 1], alpha=0.5, label=label, s=10)
-        ax.legend()
-        ax.set_title(f"2D Sample Distribution")
-        ax.set_aspect('equal')  # Makes the plot have equal scale on both axes
-        plt.tight_layout()
-
-    if title is not None:
-    # Add an overall title
-        fig.suptitle(title, fontsize=16)
+def plot_2d_scatter(target_samples, final_samples, label, title=None, save_filename=None):
+    plt.figure(figsize=(8, 6))
+    plt.scatter(target_samples[:, 0], target_samples[:, 1], alpha=0.5, label="Target", s=10)
+    plt.scatter(final_samples[:, 0], final_samples[:, 1], alpha=0.5, label=label, s=10)
+    
+    if title:
+        plt.title(title)
+    else:
+        plt.title(f"Hard 2D Gaussian Mixture (mean_scale={mean_scale})")
+    
+    plt.xlabel("x")
+    plt.ylabel("y")
+    plt.legend()
+    plt.grid(True)
+    plt.axis('equal')
     plt.tight_layout()
-    if save_filename is not None:
-    # Save figure with filename
+    
+    if save_filename:
         dir = os.path.dirname(save_filename)
         if not os.path.exists(dir):
             os.makedirs(dir)
         plt.savefig(save_filename, dpi=300, bbox_inches='tight')
         print(f"Figure saved as: {save_filename}")
-
-    plt.legend()
+    
     plt.show()
-    plt.close(fig)
+    plt.close()
 
 # Visualise target, reference and samples
 n_plot_samples = int(num_particles)
@@ -181,7 +164,12 @@ target_samples = target_distribution.sample(subkey2, num_samples=n_plot_samples)
 final_samples = resampler(
     rng=subkey3, samples=smc_result["samples"], log_weights=smc_result["log_weights"]
 )["samples"]
-plot_samples(target_samples, final_samples, label="Naive Approximation", figtype=figtype)
+plot_2d_scatter(
+    target_samples,
+    final_samples,
+    label="Naive Approximation",
+    title=f"Hard 2D Gaussian Mixture with Naive Samples (β={beta_start:.1f})"
+)
 # -
 
 # ### Learn neural network potential appproximation
@@ -417,10 +405,12 @@ final_samples = resampler(
     rng=subkey3, samples=smc_result["samples"], log_weights=smc_result["log_weights"]
 )["samples"]
 
-plot_samples(
-    target_samples, final_samples, label="PDDS", figtype=figtype,
-    title=f"β={beta_start:.3f}",
-    save_filename=f"tmp_figs/mixture_comparison_beta_{beta_start:.3f}.png"
+plot_2d_scatter(
+    target_samples,
+    final_samples,
+    label="PDDS",
+    title=f"Hard 2D Gaussian Mixture Samples with PDDS (β={beta_start:.3f})",
+    save_filename=f"figures/2D-hard-GM_annealing_beta={beta_start:.3f}.png"
 )
 # -
 
@@ -678,9 +668,11 @@ for beta_idx, beta in enumerate(beta_list):
             rng=subkey3, samples=smc_result["samples"], log_weights=smc_result["log_weights"]
         )["samples"]
 
-        plot_samples(
-            target_samples, final_samples, label="PDDS", figtype=figtype,
-            title=f"β={beta:.3f}",
+        plot_2d_scatter(
+            target_samples,
+            final_samples,
+            label="PDDS",
+            title=f"Hard 2D Gaussian Mixture with PDDS (β={beta:.3f})",
             save_filename=f"tmp_figs/mixture_comparison_beta_{beta:.3f}.png"
         )
 

@@ -136,7 +136,7 @@ final_samples = resampler(
 plt.figure(figsize=(8, 6))
 plt.scatter(target_samples[:, 0], target_samples[:, 1], alpha=0.5, label="Target", s=10)
 plt.scatter(final_samples[idx, 0], final_samples[idx, 1], alpha=0.5, label="Naive approximation", s=10)
-plt.title(f"Hard 2D Gaussian Mixture (mean_scale={mean_scale})")
+plt.title(f"Naive 2D Gaussian Mixture Samples")
 plt.xlabel("x")
 plt.ylabel("y")
 plt.legend()
@@ -392,7 +392,7 @@ for i in tqdm.trange(100, disable=True):
     smc_result, _ = eval_sampler(subkey)
     log_Z[i] = smc_result["log_normalising_constant"]
 
-print('PDDS1 log Z estimate: ', np.mean(log_Z))
+print('PDDS log Z estimate: ', np.mean(log_Z))
 
 # For the second visualization after training
 n_plot_samples = int(num_particles)
@@ -406,8 +406,8 @@ final_samples = resampler(
 # Create 2D scatter plot
 plt.figure(figsize=(8, 6))
 plt.scatter(target_samples[:, 0], target_samples[:, 1], alpha=0.5, label="Target", s=10)
-plt.scatter(final_samples[idx, 0], final_samples[idx, 1], alpha=0.5, label="PDDS1", s=10)
-plt.title(f"2D Gaussian Mixture Samples with PDDS (mean_scale={mean_scale})")
+plt.scatter(final_samples[idx, 0], final_samples[idx, 1], alpha=0.5, label="PDDS", s=10)
+plt.title(f"PDDS 2D Gaussian Mixture Samples")
 plt.xlabel("x")
 plt.ylabel("y")
 plt.legend()
