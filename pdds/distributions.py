@@ -219,6 +219,7 @@ def NormalDistributionWrapper(
 class ChallengingTwoDimensionalMixture(Distribution):
     """A challenging mixture of Gaussians in two dimensions.
     From annealed_flow_transport codebase.
+    Modified with beta scaling parameter.
     """
 
     def __init__(self, mean_scale: float, dim: int = 2, is_target: bool = False, beta: float = 1.0):

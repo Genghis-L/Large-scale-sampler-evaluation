@@ -409,9 +409,10 @@ plot_2d_scatter(
     target_samples,
     final_samples,
     label="PDDS",
-    title=f"Hard 2D Gaussian Mixture Samples with PDDS (β={beta_start:.3f})",
-    save_filename=f"figures/2D-hard-GM_annealing_beta={beta_start:.3f}.png"
+    title=f"Hard 2D Gaussian Mixture Samples with PDDS (β={beta_start:.1f})",
+    save_filename=f"figures/2D-hard-GM_annealing_beta={beta_start:.1f}.png"
 )
+
 # -
 
 # # Continued training
@@ -672,8 +673,8 @@ for beta_idx, beta in enumerate(beta_list):
             target_samples,
             final_samples,
             label="PDDS",
-            title=f"Hard 2D Gaussian Mixture with PDDS (β={beta:.3f})",
-            save_filename=f"tmp_figs/mixture_comparison_beta_{beta:.3f}.png"
+            title=f"Hard 2D Gaussian Mixture Samples with PDDS (β={beta:.1f})",
+            save_filename=f"tmp_figs/mixture_comparison_beta_{beta:.1f}.png"
         )
 
         next_valid_idx += 1
