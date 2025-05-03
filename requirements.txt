@@ -1,5 +1,6 @@
---find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-jax[cuda12_pip]
+jax==0.4.17 
+jaxlib==0.4.17
+keras>=3.5.0
 
 tensorflow
 tensorflow-probability
@@ -33,3 +34,13 @@ hydra-submitit-launcher
 black
 ipykernel
 ipywidgets
+
+matplotlib 
+seaborn 
+jupyter 
+tensorflow 
+tensorflow-probability 
+torch 
+numpyro 
+hydra-core==1.1.1 
+hydra_colorlog==1.1

@@ -1,3 +1,6 @@
+jax==0.4.17
+jaxlib==0.4.17
+keras>=3.5.0
 tensorflow
 tensorflow-probability
 torch
@@ -7,6 +10,7 @@ diffrax
 dm-haiku
 optax
 equinox
+flax
 tqdm
 matplotlib
 seaborn
@@ -14,6 +18,7 @@ jaxtyping
 chex
 check_shapes
 fsspec
+jupytext
 gpustat
 wandb
 hydra_core==1.1.1
@@ -24,3 +29,12 @@ hydra-submitit-launcher
 black
 ipykernel
 ipywidgets
+matplotlib
+seaborn
+jupyter
+tensorflow
+tensorflow-probability
+torch
+numpyro
+hydra-core==1.1.1
+hydra_colorlog==1.1

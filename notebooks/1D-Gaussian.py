@@ -26,6 +26,10 @@ import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 import time
+import warnings
+
+# 过滤 Equinox 相关警告
+warnings.filterwarnings("ignore", message="As of Equinox.*", category=UserWarning)
 
 import jax
 import jax.numpy as jnp

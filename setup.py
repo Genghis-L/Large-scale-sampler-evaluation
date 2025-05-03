@@ -3,8 +3,14 @@
 
 from setuptools import find_namespace_packages, setup
 
-with open("requirements.txt", "r") as file:
-    requirements = [line.strip() for line in file]
+def read_requirements():
+    with open("requirements.txt", "r") as file:
+        requirements = []
+        for line in file:
+            line = line.strip()
+            if line and not line.startswith('#'):
+                requirements.append(line)
+        return requirements
 
 with open("README.md", "r") as file:
     long_description = file.read()
@@ -21,9 +27,9 @@ setup(
     description="",
     # license="Apache License 2.0",
     keywords="",
-    install_requires=requirements,
     author_email="angus.phillips@stats.ox.ac.uk",
     packages=find_namespace_packages(include=["pdds"]),
+    install_requires=read_requirements(),
     classifiers=[
         "Programming Language :: Python :: 3.9",
         "Operating System :: OS Independent",

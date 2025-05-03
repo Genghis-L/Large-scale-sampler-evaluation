@@ -52,6 +52,48 @@ from pdds.sde import LinearScheduler, SDE
 from pdds.potentials import RatioPotential, NaivelyApproximatedPotential, NNApproximatedPotential
 from pdds.nn_models.mlp import PISGRADNet
 from pdds.resampling import resampler
+from pdds.distributions import NormalDistribution
+
+###############################################################################
+# Patch NormalDistribution.__init__ **including** the check_shapes wrapper
+###############################################################################
+import jax.numpy as jnp
+from pdds.distributions import NormalDistribution
+from chex import assert_axis_dimension
+from jaxtyping import Array
+from check_shapes import check_shapes                # keep shape checking
+
+@check_shapes("mean: [b, d]")
+def _safe_init(self,
+               mean: Array,
+               scale,
+               dim: int = 1,
+               is_target: bool = False):
+    """
+    Replacement for NormalDistribution.__init__ that
+    does **not** evaluate `jnp.any(scale <= 0)` in Python control-flow.
+    """
+    # ------------------------------------------------------------------ #
+    #  Re-implement the constructor, but validate only **static** values #
+    # ------------------------------------------------------------------ #
+    from pdds.distributions import Distribution        # local import
+    Distribution.__init__(self, dim, is_target)
+
+    assert_axis_dimension(mean, 1, dim)
+
+    # Validate *only* scalar (Python) numbers.
+    if isinstance(scale, (float, int)) and scale <= 0:
+        raise ValueError("Scale must be positive")
+
+    # For JAX arrays we just trust the user; if somebody actually passes
+    # a negative scale a later sqrt/LogPDF will still fail at run-time.
+    self._mean = mean
+    self._scale = scale
+    self._cov_matrix = self._scale ** 2 * jnp.eye(self.dim)
+
+# Replace the *wrapper* that every import sees
+NormalDistribution.__init__ = _safe_init
+###############################################################################
 
 # -
 

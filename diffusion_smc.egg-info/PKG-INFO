@@ -1,4 +1,4 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.4
 Name: diffusion-smc
 Version: 0.0.0
 Author: Angus Phillips, Michael Hutchinson, Hai-Dang Dau
@@ -8,6 +8,54 @@ Classifier: Operating System :: OS Independent
 Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
 Description-Content-Type: text/markdown
 License-File: LICENSE
+Requires-Dist: jax==0.4.17
+Requires-Dist: jaxlib==0.4.17
+Requires-Dist: keras>=3.5.0
+Requires-Dist: tensorflow
+Requires-Dist: tensorflow-probability
+Requires-Dist: torch
+Requires-Dist: numpyro
+Requires-Dist: inference_gym
+Requires-Dist: diffrax
+Requires-Dist: dm-haiku
+Requires-Dist: optax
+Requires-Dist: equinox
+Requires-Dist: flax
+Requires-Dist: tqdm
+Requires-Dist: matplotlib
+Requires-Dist: seaborn
+Requires-Dist: jaxtyping
+Requires-Dist: chex
+Requires-Dist: check_shapes
+Requires-Dist: fsspec
+Requires-Dist: jupytext
+Requires-Dist: gpustat
+Requires-Dist: wandb
+Requires-Dist: hydra_core==1.1.1
+Requires-Dist: hydra_colorlog==1.1
+Requires-Dist: hydra-joblib-launcher==1.1.5
+Requires-Dist: submitit
+Requires-Dist: hydra-submitit-launcher
+Requires-Dist: black
+Requires-Dist: ipykernel
+Requires-Dist: ipywidgets
+Requires-Dist: matplotlib
+Requires-Dist: seaborn
+Requires-Dist: jupyter
+Requires-Dist: tensorflow
+Requires-Dist: tensorflow-probability
+Requires-Dist: torch
+Requires-Dist: numpyro
+Requires-Dist: hydra-core==1.1.1
+Requires-Dist: hydra_colorlog==1.1
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: keywords
+Dynamic: license-file
+Dynamic: requires-dist
 
 # Particle Denoising Diffusion Sampler
 
