@@ -13,226 +13,343 @@
 #     name: python3
 # ---
 
-# # Importance Sampling Implementation
+# # 2D Hard Gaussian Mixture - Importance Sampling
+
+# ## 1. Setup and Imports
 
 # +
+# %load_ext autoreload
+# %autoreload 2
+
+import os
+import time
+import tqdm
+import typing as tp
+from functools import partial
+
+# Set available GPU
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+# JAX imports
 import jax
 import jax.numpy as jnp
+from jaxtyping import PRNGKeyArray as Key, Array
+from check_shapes import check_shapes
+
+# Data visualization
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import time
-import numpy as np
-from typing import Dict, Tuple, Callable, Any
-from jaxtyping import PRNGKeyArray as Key, Array
 
+# PDDS modules
 from pdds.distributions import NormalDistributionWrapper, ChallengingTwoDimensionalMixture
-from pdds.resampling import resampler
+
+# Define seed for reproducibility
+SEED = 0
+key = jax.random.PRNGKey(seed=SEED)
 # -
 
-# ## Importance Sampling Implementation
+# ## 2. Importance Sampling Implementation
 
 # +
-class ImportanceSampling:
-    """Implementation of importance sampling.
-    
-    Importance sampling is a technique for estimating properties of a target distribution,
-    while sampling from a different, easier-to-sample-from distribution (the proposal).
+@check_shapes("return[0]: [b, d]", "return[1]: [b]", "return[2]: [b]", "return[3]: []")
+def importance_sampling(
+    proposal_dist,
+    target_dist,
+    num_samples: int,
+    key: Key,
+):
     """
+    Performs importance sampling using the given proposal and target distributions.
     
-    def __init__(self, target_distribution, proposal_distribution):
-        """Initialize importance sampling.
+    Args:
+        proposal_dist: Distribution to sample from
+        target_dist: Target distribution we want to estimate
+        num_samples: Number of samples to generate
+        key: JAX random key
         
-        Args:
-            target_distribution: Target distribution to sample from
-            proposal_distribution: Proposal distribution to sample from
-        """
-        self.target = target_distribution
-        self.proposal = proposal_distribution
-        
-    def sample_with_weights(self, key: Key, num_samples: int) -> Dict:
-        """Generate weighted samples using importance sampling.
-        
-        Args:
-            key: PRNGKey for random number generation
-            num_samples: Number of samples to generate
-            
-        Returns:
-            Dictionary with:
-                - samples: Array of samples
-                - log_weights: Log weights for each sample
-                - normalized_weights: Normalized weights (sum to 1)
-                - ess: Effective sample size
-                - ess_ratio: Effective sample size / num_samples
-        """
-        # Sample from proposal distribution
-        proposal_samples = self.proposal.sample(key, num_samples=num_samples)
-        
-        # Compute importance weights: target pdf / proposal pdf
-        target_log_probs, _ = self.target.evaluate_log_density(proposal_samples, 0)
-        proposal_log_probs, _ = self.proposal.evaluate_log_density(proposal_samples, 0)
-        log_weights = target_log_probs - proposal_log_probs
-        
-        # Normalize weights
-        log_weights_normalized = log_weights - jax.scipy.special.logsumexp(log_weights)
-        normalized_weights = jnp.exp(log_weights_normalized)
-        
-        # Compute effective sample size
-        ess = 1.0 / jnp.sum(normalized_weights**2)
-        ess_ratio = ess / num_samples
-        
-        print(f"Effective sample size: {ess:.2f} ({ess_ratio:.4f} of total)")
-        
-        return {
-            "samples": proposal_samples,
-            "log_weights": log_weights,
-            "normalized_weights": normalized_weights,
-            "ess": ess,
-            "ess_ratio": ess_ratio
-        }
+    Returns:
+        Tuple of (samples, log_weights, normalized_weights, ess)
+    """
+    # Generate samples from the proposal distribution
+    samples = proposal_dist.sample(key, num_samples)
     
-    def resample(self, key: Key, samples: Array, log_weights: Array, num_samples: int = None) -> Dict:
-        """Resample from weighted samples to get unweighted samples.
-        
-        Args:
-            key: PRNGKey for random number generation
-            samples: Samples to resample from
-            log_weights: Log weights for each sample
-            num_samples: Number of samples to generate (default: same as input)
-            
-        Returns:
-            Dictionary with resampled samples and weights
-        """
-        if num_samples is None:
-            num_samples = samples.shape[0]
-            
-        # Use the resampler function from pdds
-        return resampler(key, samples, log_weights)
+    # Compute log densities under both distributions
+    log_q_density, _ = proposal_dist.evaluate_log_density(samples, 0)
+    log_p_density, _ = target_dist.evaluate_log_density(samples, 0)
     
-    def sample(self, key: Key, num_samples: int) -> Array:
-        """Generate unweighted samples by importance sampling followed by resampling.
-        
-        Args:
-            key: PRNGKey for random number generation
-            num_samples: Number of samples to generate
-            
-        Returns:
-            Array of unweighted samples
-        """
-        key1, key2 = jax.random.split(key)
-        result = self.sample_with_weights(key1, num_samples)
-        resampled = self.resample(key2, result["samples"], result["log_weights"])
-        return resampled["samples"]
+    # Calculate importance weights (in log-space for numerical stability)
+    log_weights = log_p_density - log_q_density
     
-    def estimate_expectation(self, f: Callable, key: Key, num_samples: int) -> Tuple[float, float]:
-        """Estimate the expectation of a function under the target distribution.
-        
-        Args:
-            f: Function to estimate expectation of
-            key: PRNGKey for random number generation
-            num_samples: Number of samples to generate
-            
-        Returns:
-            Tuple of (estimate, standard_error)
-        """
-        result = self.sample_with_weights(key, num_samples)
-        
-        # Compute f(x) for each sample
-        f_values = jax.vmap(f)(result["samples"])
-        
-        # Weighted average
-        estimate = jnp.sum(result["normalized_weights"] * f_values)
-        
-        # Standard error
-        squared_error = jnp.sum(result["normalized_weights"] * (f_values - estimate)**2)
-        standard_error = jnp.sqrt(squared_error / num_samples)
-        
-        return estimate, standard_error
-# -
+    # Normalize the weights
+    max_log_weight = jnp.max(log_weights)
+    normalized_log_weights = log_weights - max_log_weight
+    normalized_weights = jnp.exp(normalized_log_weights)
+    normalized_weights = normalized_weights / jnp.sum(normalized_weights)
+    
+    # Calculate effective sample size (ESS)
+    ess = 1.0 / jnp.sum(normalized_weights**2) / num_samples
+    
+    return samples, log_weights, normalized_weights, ess
 
-# ## Example Usage
+def resample(samples, normalized_weights, key, num_samples=None):
+    """
+    Resample from weighted samples to get unweighted samples.
+    
+    Args:
+        samples: Original weighted samples
+        normalized_weights: Normalized importance weights
+        key: JAX random key
+        num_samples: Number of samples to generate (defaults to original sample count)
+        
+    Returns:
+        Resampled samples with uniform weights
+    """
+    if num_samples is None:
+        num_samples = samples.shape[0]
+    
+    # Perform multinomial resampling
+    indices = jax.random.choice(
+        key,
+        samples.shape[0],
+        shape=(num_samples,),
+        replace=True,
+        p=normalized_weights
+    )
+    
+    resampled = samples[indices]
+    return resampled
 
-# +
-# Example usage
-if __name__ == "__main__":
-    # Set up a simple target and proposal
-    dim = 2
-    mean_scale = 3.0
+def plot_gaussian_mixture_results(target_samples, samples, normalized_weights, mean_scale, label="Importance Sampling"):
+    """
+    Creates a visualization for Gaussian mixture results with 
+    2D scatter plot and 1D marginals.
     
-    # Create distributions
-    target_distribution = ChallengingTwoDimensionalMixture(mean_scale=mean_scale, dim=dim, is_target=True)
-    proposal_distribution = NormalDistributionWrapper(mean=0.0, scale=5.0, dim=dim)
+    Args:
+        target_samples: Samples from target distribution
+        samples: Samples from approximation method
+        normalized_weights: Sample weights for importance sampling
+        mean_scale: Scale factor of Gaussian mixture means
+        label: Label for the method
+    """
+    # Create weighted and resampled versions
+    fig, axs = plt.subplots(2, 3, figsize=(18, 12))
     
-    # Create the importance sampler
-    importance_sampler = ImportanceSampling(target_distribution, proposal_distribution)
+    # Plot 2D scatter weighted samples
+    scatter_size = 10 + 90 * normalized_weights / jnp.max(normalized_weights)
+    scatter = axs[0, 0].scatter(
+        samples[:, 0], 
+        samples[:, 1], 
+        alpha=0.6, 
+        label=f"Weighted {label}", 
+        s=scatter_size,
+        c=normalized_weights,
+        cmap="viridis"
+    )
+    axs[0, 0].scatter(
+        target_samples[:, 0], 
+        target_samples[:, 1], 
+        alpha=0.3, 
+        label="Target", 
+        s=10,
+        color="red"
+    )
     
-    # Generate samples
-    key = jax.random.PRNGKey(0)
-    n_samples = 2000
-    print(f"Generating {n_samples} samples using importance sampling...")
+    axs[0, 0].set_title(f"Weighted Samples - Hard 2D Gaussian Mixture (mean_scale={mean_scale})")
+    axs[0, 0].set_xlabel("x")
+    axs[0, 0].set_ylabel("y")
+    axs[0, 0].legend()
+    axs[0, 0].grid(True)
+    axs[0, 0].axis('equal')
     
-    start_time = time.time()
-    importance_result = importance_sampler.sample_with_weights(key, n_samples)
-    key, subkey = jax.random.split(key)
-    resampled_result = importance_sampler.resample(subkey, importance_result["samples"], importance_result["log_weights"])
-    importance_samples = resampled_result["samples"]
-    elapsed_time = time.time() - start_time
-    print(f"Sampling completed in {elapsed_time:.2f} seconds")
+    # Add colorbar for weight visualization
+    plt.colorbar(scatter, ax=axs[0, 0], label="Weight")
     
-    # Generate ground truth samples for comparison
-    key, subkey = jax.random.split(key)
-    true_samples = target_distribution.sample(subkey, num_samples=n_samples)
+    # Plot 1D marginal x-axis (weighted)
+    sns.kdeplot(x=target_samples[:, 0], label="Target", ax=axs[0, 1], color="red")
+    sns.kdeplot(x=samples[:, 0], label=f"Weighted {label}", ax=axs[0, 1], 
+                weights=normalized_weights)
+    axs[0, 1].set_title("1D Marginal (x-axis) - Weighted")
+    axs[0, 1].set_xlabel("x")
+    axs[0, 1].legend()
     
-    # Visualize results
-    plt.figure(figsize=(15, 10))
+    # Plot 1D marginal y-axis (weighted)
+    sns.kdeplot(x=target_samples[:, 1], label="Target", ax=axs[0, 2], color="red")
+    sns.kdeplot(x=samples[:, 1], label=f"Weighted {label}", ax=axs[0, 2], 
+                weights=normalized_weights)
+    axs[0, 2].set_title("1D Marginal (y-axis) - Weighted")
+    axs[0, 2].set_xlabel("y")
+    axs[0, 2].legend()
     
-    # 1D marginal - x axis
-    plt.subplot(2, 2, 1)
-    sns.kdeplot(importance_samples[:, 0], label="Importance Sampling (Resampled)")
-    sns.kdeplot(true_samples[:, 0], label="Ground Truth")
-    plt.title("1D Marginal (x-axis)")
-    plt.legend()
+    # Generate resampled points
+    key = jax.random.PRNGKey(42)
+    resampled_points = resample(samples, normalized_weights, key)
     
-    # 1D marginal - y axis
-    plt.subplot(2, 2, 2)
-    sns.kdeplot(importance_samples[:, 1], label="Importance Sampling (Resampled)")
-    sns.kdeplot(true_samples[:, 1], label="Ground Truth")
-    plt.title("1D Marginal (y-axis)")
-    plt.legend()
+    # Plot 2D scatter resampled
+    axs[1, 0].scatter(
+        resampled_points[:, 0], 
+        resampled_points[:, 1], 
+        alpha=0.6, 
+        label=f"Resampled {label}", 
+        s=10
+    )
+    axs[1, 0].scatter(
+        target_samples[:, 0], 
+        target_samples[:, 1], 
+        alpha=0.3, 
+        label="Target", 
+        s=10,
+        color="red"
+    )
     
-    # 2D scatter - raw weighted samples with alpha proportional to weight
-    plt.subplot(2, 2, 3)
-    max_weight = jnp.max(importance_result["normalized_weights"])
-    alphas = importance_result["normalized_weights"] / max_weight
-    alphas = jnp.clip(alphas, 0.05, 0.9)  # Clip for better visualization
+    axs[1, 0].set_title(f"Resampled Points - Hard 2D Gaussian Mixture (mean_scale={mean_scale})")
+    axs[1, 0].set_xlabel("x")
+    axs[1, 0].set_ylabel("y")
+    axs[1, 0].legend()
+    axs[1, 0].grid(True)
+    axs[1, 0].axis('equal')
     
-    for i in range(min(n_samples, 500)):  # Limit to 500 points for clearer visualization
-        plt.scatter(
-            importance_result["samples"][i, 0], 
-            importance_result["samples"][i, 1], 
-            alpha=float(alphas[i]), 
-            color='blue',
-            s=20
-        )
-    plt.scatter([], [], color='blue', label="Weighted Samples")  # For legend
-    plt.title("Weighted Samples (alpha ∝ weight)")
-    plt.legend()
+    # Plot 1D marginal x-axis (resampled)
+    sns.kdeplot(target_samples[:, 0], label="Target", ax=axs[1, 1], color="red")
+    sns.kdeplot(resampled_points[:, 0], label=f"Resampled {label}", ax=axs[1, 1])
+    axs[1, 1].set_title("1D Marginal (x-axis) - Resampled")
+    axs[1, 1].set_xlabel("x")
+    axs[1, 1].legend()
     
-    # 2D scatter - resampled
-    plt.subplot(2, 2, 4)
-    plt.scatter(importance_samples[:, 0], importance_samples[:, 1], alpha=0.5, label="Resampled", color='green')
-    plt.scatter(true_samples[:, 0], true_samples[:, 1], alpha=0.5, label="Ground Truth", color='red')
-    plt.title("Resampled vs Ground Truth")
-    plt.legend()
+    # Plot 1D marginal y-axis (resampled)
+    sns.kdeplot(target_samples[:, 1], label="Target", ax=axs[1, 2], color="red")
+    sns.kdeplot(resampled_points[:, 1], label=f"Resampled {label}", ax=axs[1, 2])
+    axs[1, 2].set_title("1D Marginal (y-axis) - Resampled")
+    axs[1, 2].set_xlabel("y")
+    axs[1, 2].legend()
     
     plt.tight_layout()
     plt.show()
+    plt.close(fig)
+# -
+
+# ## 3. Testing with Different Mean Scales
+
+# +
+def run_importance_sampling_experiment(mean_scale, num_samples=2000, key=None):
+    """
+    Run an importance sampling experiment for the specified mean scale.
     
-    # Bonus: estimate an expectation (e.g., mean of first component)
-    def f(x):
-        return x[0]
+    Args:
+        mean_scale: Scale factor for Gaussian mixture means
+        num_samples: Number of samples to generate
+        key: JAX random key
+    """
+    if key is None:
+        key = jax.random.PRNGKey(0)
+        
+    print(f"\n--- Running experiment with mean_scale={mean_scale} ---")
     
-    est, se = importance_sampler.estimate_expectation(f, key, n_samples)
-    print(f"Estimated mean of first component: {est:.4f} ± {se:.4f}")
-    true_mean = jnp.mean(true_samples[:, 0])
-    print(f"True mean of first component: {true_mean:.4f}")
-# - 
+    # Create target distribution
+    target_dist = ChallengingTwoDimensionalMixture(
+        mean_scale=mean_scale, 
+        dim=2, 
+        is_target=True
+    )
+    
+    # Create proposal distribution (wider standard normal)
+    proposal_dist = NormalDistributionWrapper(
+        mean=0.0, 
+        scale=max(4.0, mean_scale*1.5),  # Scale proposal based on target scale
+        dim=2, 
+        is_target=False
+    )
+    
+    # Run importance sampling
+    key, subkey1, subkey2 = jax.random.split(key, 3)
+    samples, log_weights, normalized_weights, ess = importance_sampling(
+        proposal_dist, 
+        target_dist, 
+        num_samples, 
+        subkey1
+    )
+    
+    # Generate true target samples for comparison
+    target_samples = target_dist.sample(subkey2, num_samples=num_samples)
+    
+    # Print statistics
+    print(f"Effective Sample Size (ESS): {ess*100:.2f}%")
+    print(f"Min weight: {jnp.min(normalized_weights):.8f}")
+    print(f"Max weight: {jnp.max(normalized_weights):.8f}")
+    
+    # Plot results
+    plot_gaussian_mixture_results(
+        target_samples, 
+        samples, 
+        normalized_weights,
+        mean_scale
+    )
+    
+    return samples, log_weights, normalized_weights, ess, target_samples
+
+# Run experiments with different mean scales
+mean_scales = [1.0, 2.0, 3.0, 4.0, 5.0]
+results = {}
+
+# Create a fresh key for the experiments
+experiment_key = jax.random.PRNGKey(SEED)
+
+for scale in mean_scales:
+    experiment_key, subkey = jax.random.split(experiment_key)
+    samples, log_weights, normalized_weights, ess, target_samples = run_importance_sampling_experiment(scale, key=subkey)
+    results[scale] = {
+        'samples': samples,
+        'log_weights': log_weights,
+        'normalized_weights': normalized_weights,
+        'ess': ess,
+        'target_samples': target_samples
+    }
+# -
+
+# ## 4. Comparing ESS Across Mean Scales
+
+# +
+# Plot ESS comparison across mean scales
+plt.figure(figsize=(10, 6))
+ess_values = [results[scale]['ess'] * 100 for scale in mean_scales]
+plt.bar(mean_scales, ess_values)
+plt.xlabel('Mean Scale')
+plt.ylabel('Effective Sample Size (%)')
+plt.title('Importance Sampling Performance vs. Mean Scale')
+plt.xticks(mean_scales)
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+# Add text labels on top of the bars
+for i, v in enumerate(ess_values):
+    plt.text(mean_scales[i], v + 0.5, f"{v:.2f}%", ha='center')
+
+plt.tight_layout()
+plt.show()
+# -
+
+# ## 5. Summary and Conclusion
+
+# +
+# Print a summary of the experiments
+print("=" * 80)
+print("Importance Sampling for Hard 2D Gaussian Mixture - Summary")
+print("=" * 80)
+print("Sampling Performance Across Different Mean Scales:")
+for scale in mean_scales:
+    print(f"- Mean Scale {scale:.1f}: ESS = {results[scale]['ess']*100:.2f}%")
+print("-" * 80)
+print("Observations:")
+print("1. As the mean scale increases, the mixture components move farther apart")
+print("2. Importance sampling becomes less efficient with higher mean scales")
+print("3. This demonstrates the challenge of multimodal distributions for sampling")
+print("=" * 80)
+
+"""
+Conclusion:
+For 2D Gaussian mixtures with well-separated modes, importance sampling
+becomes inefficient due to the proposal distribution's inability to
+adequately cover all modes. The effective sample size decreases dramatically
+as mode separation increases, highlighting the need for more sophisticated
+sampling techniques for multimodal distributions.
+"""
+# -
