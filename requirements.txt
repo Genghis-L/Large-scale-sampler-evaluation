@@ -19,3 +19,5 @@ diffrax
 fsspec
 ipywidgets
 ml-collections
+wandb
+ott-jax
